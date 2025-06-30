@@ -4,3 +4,4 @@ ultralytics
 pyttsx3
 gtts
 firebase_admin
+flask
