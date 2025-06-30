@@ -1,10 +1,6 @@
-firebase-admin
-gTTS
-opencv-python
-pandas
-pillow
-psutil
-pygame
-pyttsx3
-torch
+opencv_python
+pygame 
 ultralytics
+pyttsx3
+gtts
+firebase_admin
