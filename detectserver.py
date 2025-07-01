@@ -8,6 +8,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from ultralytics import YOLO
 from threading import Thread
 
@@ -55,9 +56,23 @@ async def websocket_endpoint(websocket: WebSocket):
 def read_root():
     return {"message": "FastAPI server aktif"}
 
+@app.get("/video_feed")
+def video_feed():
+    return StreamingResponse(mjpeg_generator(), media_type='multipart/x-mixed-replace; boundary=frame')
+
 # ====================== #
 # 🔁 Auto Infer Loop
 # ====================== #
+
+def mjpeg_generator():
+    while True:
+        frame = camera.get_frame()
+        if frame is None:
+            continue
+        _, jpeg = cv2.imencode('.jpg', frame)
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
+        time.sleep(0.05)
 
 def draw_wrapped_text_with_background(img, text, origin, font, scale, text_color, thickness, max_width, bg_color=(0, 0, 0), alpha=0.5):
     words = text.split()
