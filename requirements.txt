@@ -4,4 +4,7 @@ ultralytics
 pyttsx3
 gtts
 firebase_admin
-flask
+fastapi
+uvicorn 
+opencv-python 
+websockets
