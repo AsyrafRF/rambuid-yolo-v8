@@ -9,6 +9,7 @@ import numpy as np
 
 from firebase_admin import credentials, firestore
 from google.cloud.firestore_v1 import FieldFilter
+from sensor import sensor_data, sensor_lock
 
 # Inisialisasi Firebase
 cred = credentials.Certificate("firebase-key.json")
@@ -70,6 +71,10 @@ def send_detection_to_firestore(label, kategori, x1, y1, x2, y2, frame, timestam
 
     for uid in user_ids:
         print(f"[INFO] Kirim data Firestore: label='{label}', kategori='{kategori}'")
+        with sensor_lock:
+            gps = sensor_data["gps"]
+            mpu = sensor_data["mpu"]
+            
         data = {
             "userId": uid,
             "label": label,
@@ -80,6 +85,8 @@ def send_detection_to_firestore(label, kategori, x1, y1, x2, y2, frame, timestam
             "y1": y1,
             "x2": x2,
             "y2": y2,
+            "lokasi": gps,
+            "orientasi": mpu,
             "image_base64": jpg_as_text
         }
 

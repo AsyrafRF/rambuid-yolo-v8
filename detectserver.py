@@ -15,6 +15,7 @@ from threading import Thread
 from camera import Camera
 from tts_utils import speak_label_threaded
 from firestore_utils import threaded_send_detection_to_firestore
+from sensor import gps_thread, mpu_thread, sensor_lock, sensor_data
 
 app = FastAPI()
 camera = Camera()
@@ -186,9 +187,15 @@ def infer_loop():
 
         _, jpeg = cv2.imencode('.jpg', frame)
         b64_image = base64.b64encode(jpeg).decode("utf-8")
+        with sensor_lock:
+            gps_info = sensor_data["gps"]
+            mpu_info = sensor_data["mpu"]
+
         latest_payload = json.dumps({
             "image": b64_image,
-            "detections": detections
+            "detections": detections,
+            "gps": gps_info,
+            "mpu": mpu_info
         })
 
         time.sleep(0.05)
@@ -197,3 +204,5 @@ def infer_loop():
 # 🚀 Start Infer Thread
 # ====================== #
 Thread(target=infer_loop, daemon=True).start()
+Thread(target=gps_thread, daemon=True).start()
+Thread(target=mpu_thread, daemon=True).start()

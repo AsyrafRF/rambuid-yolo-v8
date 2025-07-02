@@ -8,3 +8,5 @@ fastapi
 uvicorn 
 opencv-python 
 websockets
+mpu6050-raspberrypi 
+pynmea2
