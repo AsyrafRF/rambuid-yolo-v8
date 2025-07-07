@@ -10,3 +10,6 @@ opencv-python
 websockets
 mpu6050-raspberrypi 
 pynmea2
+serial
+pyserial
+smbus

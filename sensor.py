@@ -18,13 +18,24 @@ sensor_lock = threading.Lock()
 def gps_thread():
     while True:
         try:
-            line = gps.readline().decode('ascii', errors='replace')
-            if line.startswith('$GPGGA') or line.startswith('$GPRMC'):
+            line = gps.readline().decode('ascii', errors='replace').strip()
+            if line.startswith('$GPGGA'):
                 msg = pynmea2.parse(line)
-                if hasattr(msg, 'latitude') and hasattr(msg, 'longitude'):
+                # GPS fix akan bernilai > 0 jika sudah dapat sinyal
+                if int(msg.gps_qual or 0) > 0:
                     with sensor_lock:
                         sensor_data["gps"]["lat"] = msg.latitude
                         sensor_data["gps"]["lon"] = msg.longitude
+                else:
+                    print("[GPS] Belum dapat fix.")
+            elif line.startswith('$GPRMC'):
+                msg = pynmea2.parse(line)
+                if msg.status == 'A':  # A = Active, V = Void
+                    with sensor_lock:
+                        sensor_data["gps"]["lat"] = msg.latitude
+                        sensor_data["gps"]["lon"] = msg.longitude
+                else:
+                    print("[GPS] Status tidak aktif.")
         except Exception as e:
             print(f"[GPS] Error: {e}")
         time.sleep(0.1)
