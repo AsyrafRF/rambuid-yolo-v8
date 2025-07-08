@@ -2,6 +2,7 @@ import cv2
 import base64
 import json
 import asyncio
+import sys
 import os
 import time
 from datetime import datetime
@@ -11,8 +12,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from ultralytics import YOLO
 from threading import Thread
-
+from threading import Lock
+from auto_cleanup import bersihkan_log_lama
 from camera import Camera
+from log_utils import get_log_folder, tulis_log_csv
 from tts_utils import speak_label_threaded
 from firestore_utils import threaded_send_detection_to_firestore
 from sensor import gps_thread, mpu_thread, sensor_lock, sensor_data
@@ -21,6 +24,25 @@ app = FastAPI()
 camera = Camera()
 model = YOLO('rambuid.pt')
 
+class Tee:
+    def __init__(self, *streams):
+        self.streams = streams
+
+    def write(self, data):
+        for s in self.streams:
+            s.write(data)
+            s.flush()
+
+    def flush(self):
+        for s in self.streams:
+            s.flush()
+
+log_folder = get_log_folder()
+log_txt_path = os.path.join(log_folder, "log.txt")
+log_txt_file = open(log_txt_path, "a", encoding="utf-8")
+sys.stdout = Tee(sys.stdout, log_txt_file)
+sys.stderr = Tee(sys.stderr, log_txt_file)
+
 with open('label_kategori.json', 'r', encoding='utf-8') as f:
     label_to_category = json.load(f)
 
@@ -28,6 +50,8 @@ clients = set()
 send_interval = 5
 recent_labels = {}
 latest_payload = None
+frame_lock = Lock()
+annotated_frame = None  # Untuk streaming frame yang sudah dianotasi
 
 app.add_middleware(
     CORSMiddleware,
@@ -65,12 +89,26 @@ def video_feed():
 # 🔁 Auto Infer Loop
 # ====================== #
 
+def get_current_gps_str():
+    with sensor_lock:
+        gps = sensor_data["gps"]
+        return f"{gps.get('lat')},{gps.get('lon')}" if gps else "N/A"
+
 def mjpeg_generator():
     while True:
-        frame = camera.get_frame()
-        if frame is None:
+        if annotated_frame is None:
+            print("⚠️ Menunggu annotated_frame...")
+            time.sleep(0.05)
             continue
-        _, jpeg = cv2.imencode('.jpg', frame)
+        with frame_lock:
+            frame = annotated_frame.copy() if annotated_frame is not None else None
+        success, jpeg = cv2.imencode('.jpg', frame)
+        if frame is None or frame.shape[0] == 0 or frame.shape[1] == 0:
+            print("⚠️ Frame tidak valid.")
+            continue
+        if not success:
+            print("❌ Gagal meng-encode JPEG.")
+            continue
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
         time.sleep(0.05)
@@ -102,7 +140,8 @@ def draw_wrapped_text_with_background(img, text, origin, font, scale, text_color
         y += line_height
 
 def infer_loop():
-    global latest_payload
+    print("🚀 Infer loop started")
+    global latest_payload, recent_labels, annotated_frame
     icons_dir = "icons"
     while True:
         frame = camera.get_frame()
@@ -119,14 +158,26 @@ def infer_loop():
 
         detections = []
         for result in results:
+            
+            with sensor_lock:
+                gps_info = sensor_data["gps"]
+                mpu_info = sensor_data["mpu"]
+
             boxes = result.boxes.xyxy.cpu().numpy()
             classes = result.boxes.cls.cpu().numpy()
             confidences = result.boxes.conf.cpu().numpy()
+
             for box, cls_id, conf in zip(boxes, classes, confidences):
                 x1, y1, x2, y2 = map(int, box)
                 label = model.names[int(cls_id)]
                 kategori = label_to_category.get(label.lower().replace(" ", "-"), "Tidak Diketahui")
                 current_time = time.time()
+
+                # 📝 Tambahkan log ke file
+                waktu = formatted_time
+                gps_info_str = get_current_gps_str()
+
+                tulis_log_csv(label, kategori, conf, gps_info_str, waktu)
 
                 label_norm = label.lower().replace(' ', '-').strip()
                 icon_path = os.path.join(icons_dir, f"{label_norm}.png")
@@ -185,7 +236,16 @@ def infer_loop():
                     timestamp, formatted_time
                 )
 
-        _, jpeg = cv2.imencode('.jpg', frame)
+        success, jpeg = cv2.imencode('.jpg', frame)
+        if frame is None or frame.shape[0] == 0 or frame.shape[1] == 0:
+            print("⚠️ Frame tidak valid.")
+            continue
+        if not success:
+            print("❌ Gagal meng-encode JPEG.")
+            continue
+        with frame_lock:
+            annotated_frame = frame.copy()
+        print("🔁 Annotated frame updated.")
         b64_image = base64.b64encode(jpeg).decode("utf-8")
         with sensor_lock:
             gps_info = sensor_data["gps"]
@@ -198,6 +258,8 @@ def infer_loop():
             "mpu": mpu_info
         })
 
+        cv2.imwrite("test_frame.jpg", annotated_frame)
+
         time.sleep(0.05)
 
 # ====================== #
@@ -206,3 +268,4 @@ def infer_loop():
 Thread(target=infer_loop, daemon=True).start()
 Thread(target=gps_thread, daemon=True).start()
 Thread(target=mpu_thread, daemon=True).start()
+Thread(target=bersihkan_log_lama, daemon=True).start()

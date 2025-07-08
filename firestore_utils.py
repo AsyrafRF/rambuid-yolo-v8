@@ -90,8 +90,8 @@ def send_detection_to_firestore(label, kategori, x1, y1, x2, y2, frame, timestam
             "image_base64": jpg_as_text
         }
 
-        print(f"[DEBUG] Data akan dikirim untuk UID {uid}: {data}")
-
+        # print(f"[DEBUG] Data akan dikirim untuk UID {uid}: {data}")
+        print(f"[DEBUG] Data akan dikirim untuk UID {uid}")
         print("[PAYLOAD]", json.dumps(data, indent=2))
 
         try:
