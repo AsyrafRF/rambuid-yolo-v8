@@ -1,3 +1,13 @@
+Requirements:
+
+    > add firebase-key.json from rambu-id firebase console
+        - open project settings
+        - open Service accounts tab
+        - in Firebase Admin SDK -> Generate new private key
+        - download it
+        - name it as "firebase-key.json"
+        - place it on root of project
+
 General Setup:
 
     > uvicorn detectserver:app --host 0.0.0.0 --port 8080

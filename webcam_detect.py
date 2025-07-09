@@ -1,3 +1,4 @@
+import uuid
 import cv2
 import os
 import time
@@ -217,7 +218,7 @@ while True:
 
                 # Pengiriman dan proses TTS                          
                 speak_label_threaded(label)                
-                threaded_send_detection_to_firestore(label, kategori, x1, y1, x2, y2, frame_to_send, timestamp, formatted_time)
+                threaded_send_detection_to_firestore(label, kategori, x1, y1, x2, y2, frame_to_send, timestamp, formatted_time, uuid)
                 print(f"Dikirim ke Firebase: {label} @ {datetime.now().isoformat()}")
 
     # Tampilkan hasil

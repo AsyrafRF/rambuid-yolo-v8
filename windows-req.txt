@@ -1,7 +1,6 @@
 fastapi
 firebase-admin
 gTTS
-mpu6050
 opencv-python
 pygame
 pynmea2

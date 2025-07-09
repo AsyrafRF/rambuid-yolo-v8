@@ -7,14 +7,15 @@ import os
 import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from ultralytics import YOLO
-from threading import Thread
-from threading import Lock
+from threading import Thread, Lock
+from pathlib import Path
 from auto_cleanup import bersihkan_log_lama
 from camera import Camera
+from firebase_auth import verify_firebase_token
 from log_utils import get_log_folder, tulis_log_csv
 from tts_utils import speak_label_threaded
 from firestore_utils import threaded_send_detection_to_firestore
@@ -84,6 +85,35 @@ def read_root():
 @app.get("/video_feed")
 def video_feed():
     return StreamingResponse(mjpeg_generator(), media_type='multipart/x-mixed-replace; boundary=frame')
+
+@app.post("/deteksi")
+async def post_uid(request: Request):
+    try:
+        data = await request.json()
+        id_token = data.get("id_token")
+
+        uid = verify_firebase_token(id_token)
+        if not uid:
+            return {"status": "unauthorized", "detail": "Token tidak valid"}
+        
+        return {"status": "success"}
+
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}
+
+@app.get("/offline-detections")
+async def get_offline_detections():
+    try:
+        file_path = Path("offline_detections.json")
+        if not file_path.exists():
+            return JSONResponse(content=[], status_code=200)
+
+        with open(file_path, "r") as f:
+            data = json.load(f)
+
+        return JSONResponse(content=data, status_code=200)
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
 
 # ====================== #
 # 🔁 Auto Infer Loop
@@ -233,7 +263,8 @@ def infer_loop():
                     label.strip().lower(), kategori,
                     x1, y1, x2, y2,
                     frame_to_send,
-                    timestamp, formatted_time
+                    timestamp, formatted_time,
+                    post_uid
                 )
 
         success, jpeg = cv2.imencode('.jpg', frame)
