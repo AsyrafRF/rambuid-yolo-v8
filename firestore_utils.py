@@ -92,7 +92,7 @@ def send_detection_to_firestore(label, kategori, x1, y1, x2, y2, frame, timestam
 
         # print(f"[DEBUG] Data akan dikirim untuk UID {uid}: {data}")
         print(f"[DEBUG] Data akan dikirim untuk UID {uid}")
-        print("[PAYLOAD]", json.dumps(data, indent=2))
+        # print("[PAYLOAD]", json.dumps(data, indent=2))
 
         try:
             doc_id = str(uuid.uuid4())

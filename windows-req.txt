@@ -1,0 +1,12 @@
+fastapi
+firebase-admin
+gTTS
+mpu6050
+opencv-python
+pygame
+pynmea2
+pyserial
+pyttsx3
+ultralytics
+uvicorn
+websockets
