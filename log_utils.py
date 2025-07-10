@@ -1,5 +1,16 @@
 import os
+import time
 from datetime import datetime
+
+LOG_PATH = "../logs/wifi_manager.log"
+
+def log_event(msg: str):
+    """Catat log aktivitas koneksi WiFi."""
+    try:
+        with open(LOG_PATH, "a") as log:
+            log.write(f"[{time.ctime()}] {msg}\n")
+    except Exception as e:
+        print(f"Gagal menulis log: {e}")
 
 def tulis_log(teks):
     with open("log.txt", "a", encoding="utf-8") as f:
