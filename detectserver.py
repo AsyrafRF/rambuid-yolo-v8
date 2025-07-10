@@ -1,3 +1,4 @@
+import socket
 import cv2
 import base64
 import json
@@ -5,25 +6,42 @@ import asyncio
 import sys
 import os
 import time
+import subprocess
+import netifaces
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from fastapi import FastAPI, WebSocket, Request
+from fastapi import FastAPI, WebSocket, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from ultralytics import YOLO
 from threading import Thread, Lock
 from pathlib import Path
+from pydantic import BaseModel
 from auto_cleanup import bersihkan_log_lama
 from camera import Camera
 from firebase_auth import verify_firebase_token
-from log_utils import get_log_folder, tulis_log_csv
+from log_utils import get_log_folder, log_event, tulis_log_csv
 from tts_utils import speak_label_threaded
 from firestore_utils import threaded_send_detection_to_firestore
 from sensor import gps_thread, mpu_thread, sensor_lock, sensor_data
+from wifi import (
+    scan_wifi,
+    connect_to_wifi,
+    check_internet,
+    get_current_ssid,
+    try_connect_and_verify,
+    stop_hotspot,
+    start_hotspot,
+    write_wifi_config
+)
 
 app = FastAPI()
 camera = Camera()
 model = YOLO('rambuid.pt')
+
+class WifiConnectRequest(BaseModel):
+    ssid: str
+    password: str
 
 class Tee:
     def __init__(self, *streams):
@@ -53,6 +71,8 @@ recent_labels = {}
 latest_payload = None
 frame_lock = Lock()
 annotated_frame = None  # Untuk streaming frame yang sudah dianotasi
+ssid_lock = Lock()
+current_ssid = None  # global var untuk menyimpan SSID saat connect
 
 app.add_middleware(
     CORSMiddleware,
@@ -64,6 +84,94 @@ app.add_middleware(
 # ====================== #
 # 📤 WebSocket Route
 # ====================== #
+@app.get("/wifi/scan")
+def scan():
+    ssids = scan_wifi()
+    return {"wifi": ssids}
+
+
+@app.post("/wifi/connect")
+def connect_wifi_endpoint(data: WifiConnectRequest):
+    global current_ssid
+    with ssid_lock:
+        current_ssid = data.ssid  # ✅ simpan SSID yang berhasil dicoba
+    if not data.ssid or len(data.password) < 8:
+        raise HTTPException(status_code=400, detail="SSID/password tidak valid")
+
+    write_wifi_config(data.ssid, data.password)
+    stop_hotspot()
+    subprocess.run(["sudo", "wpa_cli", "-i", "wlan0", "reconfigure"])
+    time.sleep(10)
+
+    for _ in range(6):
+        try:
+            socket.create_connection(("8.8.8.8", 53), timeout=3)
+            return {"status": "connected", "fallback": False}
+        except OSError:
+            time.sleep(5)
+
+    start_hotspot()
+    return {"status": "failed", "fallback": True}
+
+
+def get_ip_address():
+    iface = 'wlan0'
+    try:
+        if iface in netifaces.interfaces():
+            addrs = netifaces.ifaddresses(iface)
+            if netifaces.AF_INET in addrs:
+                return addrs[netifaces.AF_INET][0]['addr']
+    except Exception:
+        pass
+    return None
+
+
+@app.get("/wifi/status")
+def wifi_status():
+    connected = False
+    try:
+        socket.create_connection(("8.8.8.8", 53), timeout=3)
+        connected = True
+    except OSError:
+        pass
+
+    fallback = False
+    hotspot_ssid = None
+
+    hostapd_status = subprocess.run(
+        ["systemctl", "is-active", "hostapd"],
+        capture_output=True,
+        text=True
+    )
+    if "active" in hostapd_status.stdout:
+        fallback = True
+        try:
+            with open("/etc/hostapd/hostapd.conf") as f:
+                for line in f:
+                    if line.startswith("ssid="):
+                        hotspot_ssid = line.strip().split("=")[1]
+                        break
+        except FileNotFoundError:
+            pass
+
+    ip_address = get_ip_address() if connected else None
+
+    return {
+        "connected": connected,
+        "fallback": fallback,
+        "ssid": hotspot_ssid if fallback else None,
+        "ip": ip_address
+    }
+
+
+@app.get("/wifi/info")
+def wifi_info():
+    ssid = get_current_ssid()
+    return {
+        "ssid": ssid,
+        "message": "Belum terhubung ke jaringan WiFi" if not ssid else None
+    }
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -208,6 +316,10 @@ def infer_loop():
                 gps_info_str = get_current_gps_str()
 
                 tulis_log_csv(label, kategori, conf, gps_info_str, waktu)
+
+                with ssid_lock:
+                    ssid = current_ssid if current_ssid else "unknown"
+                log_event(f"Detected label={label}, SSID={ssid}, waktu={waktu}")
 
                 label_norm = label.lower().replace(' ', '-').strip()
                 icon_path = os.path.join(icons_dir, f"{label_norm}.png")

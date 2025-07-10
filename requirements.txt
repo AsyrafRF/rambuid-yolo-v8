@@ -12,3 +12,4 @@ mpu6050-raspberrypi
 pynmea2
 pyserial
 smbus
+netifaces
