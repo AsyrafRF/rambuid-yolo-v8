@@ -138,7 +138,7 @@ def send_detection_to_firestore(label, kategori, x1, y1, x2, y2, frame, timestam
         print("Gambar terlalu besar untuk Firestore.")
         return
 
-    for uid in user_ids:
+    for uid in user_ids():
         print(f"[INFO] Kirim data Firestore: label='{label}', kategori='{kategori}'")
         with sensor_lock:
             gps = sensor_data["gps"]

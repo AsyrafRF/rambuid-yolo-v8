@@ -37,7 +37,7 @@ from wifi import (
 
 app = FastAPI()
 camera = Camera()
-model = YOLO('rambuid.pt')
+model = YOLO('models/rambuid.pt')
 
 class WifiConnectRequest(BaseModel):
     ssid: str
@@ -62,7 +62,7 @@ log_txt_file = open(log_txt_path, "a", encoding="utf-8")
 sys.stdout = Tee(sys.stdout, log_txt_file)
 sys.stderr = Tee(sys.stderr, log_txt_file)
 
-with open('label_kategori.json', 'r', encoding='utf-8') as f:
+with open('category/label_kategori.json', 'r', encoding='utf-8') as f:
     label_to_category = json.load(f)
 
 clients = set()

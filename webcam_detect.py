@@ -17,11 +17,11 @@ from firestore_utils import threaded_send_detection_to_firestore
 # ============================ #
 
 # Load mapping label → kategori dari file JSON eksternal
-with open('label_kategori.json', 'r', encoding='utf-8') as f:
+with open('category/label_kategori.json', 'r', encoding='utf-8') as f:
     label_to_category = json.load(f)
 
 # Load model YOLOv8
-model = YOLO('rambuid.pt')
+model = YOLO('models/rambuid.pt')
 
 # Folder ikon
 icons_dir = 'icons'

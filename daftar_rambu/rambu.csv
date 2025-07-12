@@ -1,0 +1,35 @@
+id,nama,jenis,deskripsi,file_gambar
+R01,Larangan Parkir,Larangan,Kendaraan dilarang parkir.,icons/larangan-parkir.png
+R02,Dilarang Masuk,Larangan,Dilarang memasuki jalur ini.,icons/dilarang-masuk.png
+
+
+
+id,nama,jenis,deskripsi,file_gambar
+R01,Larangan Parkir,Larangan,Kendaraan dilarang parkir di area ini,icons/larangan-parkir.png
+R02,Dilarang Masuk,Larangan,Dilarang masuk bagi semua kendaraan,icons/dilarang-masuk.png
+R03,Penyeberangan Pejalan Kaki,Peringatan,Hati-hati ada penyeberangan pejalan kaki,icons/penyeberangan.png
+R04,Belok Kiri,Berpengaruh,Petunjuk arah untuk belok kiri,icons/belok-kiri.png
+R05,Informasi SPBU,Informasi,Menunjukkan lokasi stasiun pengisian bahan bakar,icons/spbu.png
+
+
+id,nama,jenis,deskripsi,file_gambar
+P01,Persimpangan Jalan,Peringatan,Peringatan bahwa ada persimpangan di depan,icons/peringatan-persimpangan.png
+P02,Jalan Menurun,Peringatan,Peringatan jalan menurun tajam di depan,icons/peringatan-menurun.png
+P03,Tikungan Kanan,Peringatan,Peringatan tikungan tajam ke kanan di depan,icons/peringatan-tikungan-kanan.png
+P04,Jalan Licin,Peringatan,Peringatan kondisi jalan licin atau berbahaya,icons/peringatan-jalan-licin.png
+P05,Penyeberangan Pejalan Kaki,Peringatan,Peringatan ada penyeberangan pejalan kaki,icons/peringatan-penyeberangan.png
+L01,Dilarang Masuk,Larangan,Kendaraan dilarang memasuki jalur ini,icons/larangan-masuk.png
+L02,Larangan Parkir,Larangan,Kendaraan dilarang parkir di area ini,icons/larangan-parkir.png
+L03,Dilarang Belok Kanan,Larangan,Kendaraan dilarang belok ke kanan,icons/larangan-belok-kanan.png
+L04,Dilarang Berhenti,Larangan,Kendaraan dilarang berhenti di area ini,icons/larangan-berhenti.png
+L05,Batas Kecepatan Maksimum,Larangan,Kendaraan tidak boleh melebihi kecepatan tertentu,icons/larangan-kecepatan.png
+T01,Belok Kiri,Wajib,Pengemudi wajib belok ke kiri,icons/wajib-belok-kiri.png
+T02,Lurus Saja,Wajib,Kendaraan hanya boleh lurus,icons/wajib-lurus.png
+T03,Gunakan Lajur Kiri,Wajib,Kendaraan harus menggunakan lajur kiri,icons/wajib-lajur-kiri.png
+T04,Ikuti Arah Tertentu,Wajib,Kendaraan wajib mengikuti arah tanda panah,icons/wajib-arah.png
+T05,Gunakan Sabuk Pengaman,Wajib,Penumpang dan pengemudi wajib menggunakan sabuk pengaman,icons/wajib-sabuk.png
+I01,SPBU,Informasi,Informasi lokasi stasiun pengisian bahan bakar,icons/info-spbu.png
+I02,Rumah Sakit,Informasi,Informasi lokasi rumah sakit terdekat,icons/info-rumah-sakit.png
+I03,Polisi,Informasi,Informasi lokasi kantor polisi terdekat,icons/info-polisi.png
+I04,Toilet Umum,Informasi,Informasi lokasi toilet umum,icons/info-toilet.png
+I05,Parkir,Informasi,Informasi lokasi tempat parkir resmi,icons/info-parkir.png

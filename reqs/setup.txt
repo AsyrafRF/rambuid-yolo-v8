@@ -1,5 +1,15 @@
 Requirements:
 
+    ~ Windows:
+        > py -m venv your_venv_name 
+        > your_venv_name/Scripts/activate
+        > pip install -r reqs/windows-req.txt
+
+    ~ Linux:    
+        > python3 -m venv your_venv_name 
+        > source your_venv_name/bin/activate
+        > pip install -r reqs/requierements.txt
+
     > add firebase-key.json from rambu-id firebase console
         - open project settings
         - open Service accounts tab
