@@ -1,0 +1,2 @@
+[{'id': 'abc123', 'name': 'John'}, ...] = user["id"]
+<User id='abc123' name='John'> = user.id
