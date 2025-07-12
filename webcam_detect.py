@@ -9,8 +9,9 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from ultralytics import YOLO
 
+from camera import Camera
 from tts_utils import speak_label_threaded
-from firestore_utils import threaded_send_detection_to_firestore
+from firestore_utils import threaded_send_detection_to_firestore, fetch_uid_from_server
 
 # ============================ #
 # 🔧 Inisialisasi Komponen     
@@ -25,9 +26,6 @@ model = YOLO('models/rambuid.pt')
 
 # Folder ikon
 icons_dir = 'icons'
-
-# Buka webcam
-cap = cv2.VideoCapture(0)
 
 # Variabel kontrol pengiriman
 recent_labels = {}
@@ -76,9 +74,12 @@ def draw_wrapped_text_with_background(img, text, origin, font, scale, text_color
 # ============================ #
 
 while True:
-    ret, frame = cap.read()
-    if not ret:
-        print("Gagal membuka webcam.")
+    camera = Camera()  # Membuat objek Camera
+    frame = camera.get_frame()  # Mengambil frame menggunakan method get_frame()
+    
+    # Periksa apakah frame valid
+    if frame is None:
+        print("Gagal mengambil frame dari kamera.")
         break
 
     # Ambil waktu sekarang di zona Asia/Jakarta
@@ -218,7 +219,7 @@ while True:
 
                 # Pengiriman dan proses TTS                          
                 speak_label_threaded(label)                
-                threaded_send_detection_to_firestore(label, kategori, x1, y1, x2, y2, frame_to_send, timestamp, formatted_time, uuid)
+                threaded_send_detection_to_firestore(label, kategori, x1, y1, x2, y2, frame_to_send, timestamp, formatted_time, uid=fetch_uid_from_server)
                 print(f"Dikirim ke Firebase: {label} @ {datetime.now().isoformat()}")
 
     # Tampilkan hasil
@@ -233,6 +234,6 @@ while True:
 # 🚪 Bersih-bersih
 # ============================ #
 
-cap.release()
+camera.stop()  # Hentikan kamera dengan memanggil stop() pada objek Camera
 cv2.destroyAllWindows()
 pygame.mixer.quit()

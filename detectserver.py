@@ -73,6 +73,10 @@ frame_lock = Lock()
 annotated_frame = None  # Untuk streaming frame yang sudah dianotasi
 ssid_lock = Lock()
 current_ssid = None  # global var untuk menyimpan SSID saat connect
+UID = None
+def load_uid():
+    global UID
+    UID = get_uid_from_file()
 
 app.add_middleware(
     CORSMiddleware,
@@ -201,6 +205,10 @@ async def post_uid(request: Request):
         id_token = data.get("id_token")
 
         uid = verify_firebase_token(id_token)
+
+        with open("device_info.json", "w") as f:
+            json.dump({"user_id": uid}, f)
+
         if not uid:
             return {"status": "unauthorized", "detail": "Token tidak valid"}
         
@@ -226,6 +234,15 @@ async def get_offline_detections():
 # ====================== #
 # 🔁 Auto Infer Loop
 # ====================== #
+
+def get_uid_from_file():
+    try:
+        with open("device_info.json", "r") as f:
+            data = json.load(f)
+            return data.get("user_id")
+    except Exception as e:
+        print(f"[UID] Gagal ambil UID: {e}")
+        return None
 
 def get_current_gps_str():
     with sensor_lock:
@@ -278,7 +295,6 @@ def draw_wrapped_text_with_background(img, text, origin, font, scale, text_color
         y += line_height
 
 def infer_loop():
-    print("🚀 Infer loop started")
     global latest_payload, recent_labels, annotated_frame
     icons_dir = "icons"
     while True:
@@ -371,13 +387,16 @@ def infer_loop():
                 recent_labels[label] = current_time
                 frame_to_send = cv2.resize(frame.copy(), (320, 240))
                 speak_label_threaded(label)
-                threaded_send_detection_to_firestore(
-                    label.strip().lower(), kategori,
-                    x1, y1, x2, y2,
-                    frame_to_send,
-                    timestamp, formatted_time,
-                    post_uid
-                )
+                if UID:
+                    threaded_send_detection_to_firestore(
+                        label.strip().lower(), kategori,
+                        x1, y1, x2, y2,
+                        frame_to_send,
+                        timestamp, formatted_time,
+                        UID
+                    )
+                else:
+                    print("⚠️ UID tidak tersedia.")
 
         success, jpeg = cv2.imencode('.jpg', frame)
         if frame is None or frame.shape[0] == 0 or frame.shape[1] == 0:
@@ -408,6 +427,7 @@ def infer_loop():
 # ====================== #
 # 🚀 Start Infer Thread
 # ====================== #
+print("🚀 Infer loop started")
 Thread(target=infer_loop, daemon=True).start()
 Thread(target=gps_thread, daemon=True).start()
 Thread(target=mpu_thread, daemon=True).start()

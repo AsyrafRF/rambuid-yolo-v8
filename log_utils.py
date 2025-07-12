@@ -2,7 +2,7 @@ import os
 import time
 from datetime import datetime
 
-LOG_PATH = "../logs/wifi_manager.log"
+LOG_PATH = "logs"
 
 def log_event(msg: str):
     """Catat log aktivitas koneksi WiFi."""

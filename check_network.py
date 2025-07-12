@@ -5,7 +5,7 @@ import time
 import os
 from datetime import datetime, timedelta
 
-REBOOT_LOG = "../logs/last_reboot.log"
+REBOOT_LOG = "../logs"
 MAX_WAIT = 180  # waktu tunggu sebelum reboot (detik)
 REBOOT_COOLDOWN = 3600  # 1 jam (dalam detik)
 CHECK_INTERVAL = 5

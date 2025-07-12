@@ -7,7 +7,6 @@ import base64
 import firebase_admin
 import requests  # Untuk cek koneksi
 import numpy as np
-
 from firebase_admin import credentials, firestore
 from pathlib import Path
 from sensor import sensor_data, sensor_lock
@@ -29,13 +28,25 @@ OFFLINE_DETECTIONS_FILE = "offline_detections.json"
 def get_user_ids():
     from detectserver import post_uid
     try:
-        users = post_uid
+        users = post_uid()
         user_ids = [user.id for user in users]
+        print(f"[DEBUG] Hasil post_uid: {users}")
         print(f"[DEBUG] UID aktif ditemukan: {user_ids}")
         return user_ids
     except Exception as e:
         print(f"Error ambil user aktif: {e}")
         return []
+    
+def get_user_id():
+    if os.path.exists(DEVICE_INFO_FILE):
+        with open(DEVICE_INFO_FILE, "r") as f:
+            data = json.load(f)
+            uid = data.get("user_id")
+            if uid:
+                print(f"[INFO] UID ditemukan: {uid}")
+                return uid
+    print("[WARN] UID belum disimpan di device_info.json")
+    return None
 
 def is_connected():
     try:
@@ -112,20 +123,18 @@ def is_valid_label(label):
 def is_valid_frame(frame):
     return frame is not None and isinstance(frame, (np.ndarray,))
 
-def send_detection_to_firestore(label, kategori, x1, y1, x2, y2, frame, timestamp, formatted_time, uid):
-
+def send_detection_to_firestore(label, kategori, x1, y1, x2, y2, frame, timestamp, formatted_time, user_id):
     label = label.strip().lower()
 
     if not is_valid_label(label):
         print(f"Label tidak valid: '{label}', tidak dikirim.")
-        return 
-    
+        return
+
     if not is_valid_frame(frame):
         print("Frame tidak valid.")
         return
-    
-    user_ids = get_user_ids()
-    if not user_ids:
+
+    if not user_id:
         print("UID tidak tersedia. Tidak menyimpan deteksi.")
         return
 
@@ -138,49 +147,46 @@ def send_detection_to_firestore(label, kategori, x1, y1, x2, y2, frame, timestam
         print("Gambar terlalu besar untuk Firestore.")
         return
 
-    for uid in user_ids():
-        print(f"[INFO] Kirim data Firestore: label='{label}', kategori='{kategori}'")
-        with sensor_lock:
-            gps = sensor_data["gps"]
-            mpu = sensor_data["mpu"]
+    print(f"[INFO] Kirim data Firestore: label='{label}', kategori='{kategori}'")
+    with sensor_lock:
+        gps = sensor_data["gps"]
+        mpu = sensor_data["mpu"]
 
-        device_id = get_device_id()
-            
-        data = {
-            "userId": uid,
-            "deviceId": device_id,
-            "label": label,
-            "kategori": kategori,
-            "timestamp": timestamp,
-            "tanggal": formatted_time,
-            "x1": x1,
-            "y1": y1,
-            "x2": x2,
-            "y2": y2,
-            "lokasi": gps,
-            "orientasi": mpu,
-            "image_base64": jpg_as_text
-        }
+    device_id = get_device_id()
 
-        # print(f"[DEBUG] Data akan dikirim untuk UID {uid}: {data}")
-        print(f"[DEBUG] Data akan dikirim untuk UID {uid}")
-        # print("[PAYLOAD]", json.dumps(data, indent=2))
+    data = {
+        "userId": user_id,
+        "deviceId": device_id,
+        "label": label,
+        "kategori": kategori,
+        "timestamp": timestamp,
+        "tanggal": formatted_time,
+        "x1": x1,
+        "y1": y1,
+        "x2": x2,
+        "y2": y2,
+        "lokasi": gps,
+        "orientasi": mpu,
+        "image_base64": jpg_as_text
+    }
 
-        if is_connected():
-            try:
-                doc_id = str(uuid.uuid4())
-                db.collection(FIRESTORE_USER_COLLECTION).document(uid).collection("detections").document(doc_id).set(data)
-                print(f"[ONLINE] Data dikirim ke Firestore untuk UID: {uid}")
-                print(f"[Firebase] Dikirim: {label} oleh UID {user_ids} @ {timestamp}")
-                sync_offline_data()
-            except Exception as e:
-                import traceback
-                traceback.print_exc()
-                print(f"[Error Firebase] Gagal kirim untuk {uid}: {e}")
-                save_offline(data)
-        else:
-            print("[OFFLINE] Tidak ada koneksi. Simpan lokal.")
+    # print(f"[DEBUG] Data akan dikirim untuk UID {user_id}: {data}")
+    print(f"[DEBUG] Data akan dikirim untuk UID {user_id}")
+    # print("[PAYLOAD]", json.dumps(data, indent=2))
+
+    if is_connected():
+        try:
+            doc_id = str(uuid.uuid4())
+            db.collection(FIRESTORE_USER_COLLECTION).document(user_id).collection("detections").document(doc_id).set(data)
+            print(f"[ONLINE] Data dikirim ke Firestore untuk UID: {user_id}")
+            print(f"[Firebase] Dikirim: {label} oleh UID {user_id} @ {timestamp}")
+            sync_offline_data()
+        except Exception as e:
+            print(f"[Error Firebase] Gagal kirim untuk {user_id}: {e}")
             save_offline(data)
+    else:
+        print("[OFFLINE] Tidak ada koneksi. Simpan lokal.")
+        save_offline(data)
 
 def threaded_send_detection_to_firestore(label, kategori, x1, y1, x2, y2, frame, timestamp, formatted_time, uid):
     threading.Thread(
@@ -188,3 +194,23 @@ def threaded_send_detection_to_firestore(label, kategori, x1, y1, x2, y2, frame,
         args=(label, kategori, x1, y1, x2, y2, frame, timestamp, formatted_time, uid),
         daemon=True
     ).start()
+
+
+import requests
+
+def fetch_uid_from_server(id_token):
+    try:
+        response = requests.post("http://localhost:8000/deteksi", json={"id_token": id_token})
+        data = response.json()
+        print(data)
+    except Exception as e:
+        print(f"Error ambil UID dari server: {e}")
+
+if __name__ == "__main__":
+    load_uid() # type: ignore
+    fetch_uid_from_server()
+    uids = get_user_ids()
+    print("User aktif:", uids)
+if not __name__:
+    print("UID tidak tersedia. Menggunakan UID default (offline).")
+    user_ids = ["offline-user"]
