@@ -10,3 +10,5 @@ ultralytics
 uvicorn
 websockets
 netifaces
+onnx 
+onnxruntime

@@ -15,7 +15,6 @@ from fastapi import FastAPI, WebSocket, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 import numpy as np
-import onnxruntime as ort
 from ultralytics import YOLO
 from threading import Thread, Lock
 from pathlib import Path
@@ -38,12 +37,6 @@ from wifi import (
     write_wifi_config
 )
 
-def load_labels(path="labels.txt"):
-    with open(path, "r", encoding="utf-8") as f:
-        return [line.strip() for line in f if line.strip()]
-
-labels = load_labels()
-
 def get_uid_from_file():
     try:
         with open("device_info.json", "r") as f:
@@ -56,7 +49,7 @@ def get_uid_from_file():
 DEVICE_INFO_FILE = "device_info.json"
 app = FastAPI()
 camera = Camera()
-# model = YOLO('models/rambuid.pt')
+model = YOLO('models/rambuid.pt')
 
 class WifiConnectRequest(BaseModel):
     ssid: str
@@ -85,7 +78,7 @@ with open('category/label_kategori.json', 'r', encoding='utf-8') as f:
     label_to_category = json.load(f)
 
 clients = set()
-SEND_INTERVAL = 5 
+send_interval = 5
 recent_labels = {}
 latest_payload = None
 frame_lock = Lock()
@@ -261,33 +254,9 @@ async def get_offline_detections():
 def health_check():
     return {"status": "ok"}
 
-# Load ONNX model
-ort_session = ort.InferenceSession("models/rambuid.onnx", providers=["CPUExecutionProvider"])
-input_name = ort_session.get_inputs()[0].name
-
 # ====================== #
-# Helper Functions
+# 🔁 Auto Infer Loop
 # ====================== #
-def preprocess_for_onnx(frame):
-    resized = cv2.resize(frame, (320, 320))
-    img = resized[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB, HWC to CHW
-    img = img.astype(np.float32) / 255.0
-    img = np.expand_dims(img, axis=0)
-    return img
-
-def postprocess_output(output, conf_threshold=0.5):
-    predictions = output[0]  # shape: [1, num_boxes, 6]
-    results = []
-    for pred in predictions:
-        if pred[4] < conf_threshold:
-            continue
-        x1, y1, x2, y2, conf, cls = pred[:6]
-        results.append({
-            "box": [int(x1), int(y1), int(x2), int(y2)],
-            "confidence": float(conf),
-            "class_id": int(cls)
-        })
-    return results
 
 def get_current_gps_str():
     with sensor_lock:
@@ -345,91 +314,139 @@ def draw_wrapped_text_with_background(img, text, origin, font, scale, text_color
         cv2.putText(img, line, (x, y), font, scale, text_color, thickness)
         y += line_height
 
-# ====================== #
-# 🔁 Auto Infer Loop
-# ====================== #
-
-def infer_loop(camera, get_uid_from_file, current_ssid):
-    global annotated_frame, latest_payload, recent_labels
-
+def infer_loop():
+    global latest_payload, recent_labels, annotated_frame
+    icons_dir = "icons"
+    UID = get_uid_from_file()
+    print(f"[UID] Loaded: {UID}")
     while True:
         frame = camera.get_frame()
         if frame is None:
-            time.sleep(0.05)
             continue
 
-        input_tensor = preprocess_for_onnx(frame)
-        output = ort_session.run(None, {input_name: input_tensor})
-        detections_raw = postprocess_output(output, conf_threshold=0.5)
-
+        results = model.predict(frame, conf=0.5, save=False, imgsz=320, device='cpu')[0]
         waktu_jakarta = datetime.now(ZoneInfo("Asia/Jakarta"))
         timestamp = waktu_jakarta.isoformat()
         formatted_time = waktu_jakarta.strftime("%d-%m-%Y %H:%M:%S") + " WIB"
 
+        if results.boxes is None or len(results.boxes) == 0:
+            continue
+
         detections = []
+        for result in results:
+            
+            with sensor_lock:
+                gps_info = sensor_data["gps"]
+                mpu_info = sensor_data["mpu"]
 
-        for det in detections_raw:
-            x1, y1, x2, y2 = det["box"]
-            conf = det["confidence"]
-            cls_id = det["class_id"]
+            boxes = result.boxes.xyxy.cpu().numpy()
+            classes = result.boxes.cls.cpu().numpy()
+            confidences = result.boxes.conf.cpu().numpy()
 
-            label = labels[cls_id] if cls_id < len(labels) else f"class_{cls_id}"
-            if hasattr(ort_session, 'model_metadata') and ort_session.model_metadata.custom_metadata_map:
-                label = ort_session.model_metadata.custom_metadata_map.get(str(cls_id), label)
+            for box, cls_id, conf in zip(boxes, classes, confidences):
+                x1, y1, x2, y2 = map(int, box)
+                label = model.names[int(cls_id)]
+                kategori = label_to_category.get(label.lower().replace(" ", "-"), "Tidak Diketahui")
+                current_time = time.time()
 
-            kategori = label_to_category.get(label.lower().replace(" ", "-"), "Tidak Diketahui")
-            gps_info_str = get_current_gps_str()
-            mpu_info_str = get_current_mpu_str()
+                # 📝 Tambahkan log ke file
+                waktu = formatted_time
+                gps_info_str = get_current_gps_str()
+                mpu_info_str = get_current_mpu_str()
 
-            tulis_log_csv(label, kategori, conf, gps_info_str, mpu_info_str, formatted_time)
+                tulis_log_csv(label, kategori, conf, gps_info_str, mpu_info_str, waktu)
 
-            ssid = current_ssid if current_ssid else "unknown"
-            log_event(f"Detected label={label}, SSID={ssid}, waktu={formatted_time}")
+                with ssid_lock:
+                    ssid = current_ssid if current_ssid else "unknown"
+                log_event(f"Detected label={label}, SSID={ssid}, waktu={waktu}")
 
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            cv2.putText(frame, label, (x1, y1 - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                label_norm = label.lower().replace(' ', '-').strip()
+                icon_path = os.path.join(icons_dir, f"{label_norm}.png")
+
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                cv2.putText(frame, label, (x1, y1 - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                cv2.putText(frame, f"Kategori: {kategori}", (x1, y1 + 20),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
+
+                if os.path.exists(icon_path):
+                    icon = cv2.imread(icon_path, cv2.IMREAD_UNCHANGED)
+                    if icon is not None:
+                        icon = cv2.resize(icon, (100, 100))
+                        x_offset, y_offset = 10, 10
+                        y1_icon, y2_icon = y_offset, y_offset + icon.shape[0]
+                        x1_icon, x2_icon = x_offset, x_offset + icon.shape[1]
+                        if icon.shape[2] == 4:
+                            alpha_s = icon[:, :, 3] / 255.0
+                            alpha_l = 1.0 - alpha_s
+                            for c in range(3):
+                                frame[y1_icon:y2_icon, x1_icon:x2_icon, c] = (
+                                    alpha_s * icon[:, :, c] +
+                                    alpha_l * frame[y1_icon:y2_icon, x1_icon:x2_icon, c]
+                                )
+                        else:
+                            frame[y1_icon:y2_icon, x1_icon:x2_icon] = icon
+
+                        draw_wrapped_text_with_background(
+                            frame,
+                            f"Ini adalah rambu {label}",
+                            origin=(10, y2_icon + 30),
+                            font=cv2.FONT_HERSHEY_SIMPLEX,
+                            scale=0.7,
+                            text_color=(0, 255, 255),
+                            thickness=2,
+                            max_width=frame.shape[1] - 20
+                        )
 
             detections.append({
                 "label": label,
-                "confidence": conf,
+                "confidence": float(conf),
                 "kategori": kategori,
                 "box": [x1, y1, x2, y2]
             })
 
-            current_time = time.time()
-            if label not in recent_labels or (current_time - recent_labels[label]) >= SEND_INTERVAL:
+            # 🔊 TTS + Firestore (1x per label dalam interval)
+            if label not in recent_labels or (current_time - recent_labels[label]) >= send_interval:
                 recent_labels[label] = current_time
+                frame_to_send = cv2.resize(frame.copy(), (320, 240))
                 speak_label_threaded(label)
                 UID = get_uid_from_file()
                 if UID:
-                    frame_to_send = cv2.resize(frame.copy(), (320, 240))
                     threaded_send_detection_to_firestore(
                         label.strip().lower(), kategori,
                         x1, y1, x2, y2,
                         frame_to_send,
                         timestamp, formatted_time,
                     )
+                    logging.info(f"[SEND] Kirim label={label} UID={UID} kategori={kategori}")
+                else:
+                    print("⚠️ UID tidak tersedia.")
 
-        # Update latest frame and payload
         success, jpeg = cv2.imencode('.jpg', frame)
-        if success:
-            with frame_lock:
-                annotated_frame = frame.copy()
-            b64_image = base64.b64encode(jpeg).decode("utf-8")
-            with sensor_lock:
-                gps_info = sensor_data["gps"]
-                mpu_info = sensor_data["mpu"]
+        if frame is None or frame.shape[0] == 0 or frame.shape[1] == 0:
+            print("⚠️ Frame tidak valid.")
+            continue
+        if not success:
+            print("❌ Gagal meng-encode JPEG.")
+            continue
+        with frame_lock:
+            annotated_frame = frame.copy()
+        print("🔁 Annotated frame updated.")
+        b64_image = base64.b64encode(jpeg).decode("utf-8")
+        with sensor_lock:
+            gps_info = sensor_data["gps"]
+            mpu_info = sensor_data["mpu"]
 
-            latest_payload = json.dumps({
-                "image": b64_image,
-                "detections": detections,
-                "gps": gps_info,
-                "mpu": mpu_info
-            })
+        latest_payload = json.dumps({
+            "image": b64_image,
+            "detections": detections,
+            "gps": gps_info,
+            "mpu": mpu_info
+        })
+
+        cv2.imwrite("test_frame.jpg", annotated_frame)
 
         time.sleep(0.05)
-
 
 # ====================== #
 # 🚀 Start Infer Thread

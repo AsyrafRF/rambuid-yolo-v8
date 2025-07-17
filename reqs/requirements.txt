@@ -13,3 +13,5 @@ pynmea2
 pyserial
 smbus
 netifaces
+onnx 
+onnxruntime
