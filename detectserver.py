@@ -36,6 +36,15 @@ from wifi import (
     write_wifi_config
 )
 
+def get_uid_from_file():
+    try:
+        with open("device_info.json", "r") as f:
+            data = json.load(f)
+            return data.get("user_id")
+    except Exception as e:
+        print(f"[UID] Gagal ambil UID: {e}")
+        return None
+
 DEVICE_INFO_FILE = "device_info.json"
 app = FastAPI()
 camera = Camera()
@@ -75,10 +84,7 @@ frame_lock = Lock()
 annotated_frame = None  # Untuk streaming frame yang sudah dianotasi
 ssid_lock = Lock()
 current_ssid = None  # global var untuk menyimpan SSID saat connect
-UID = None
-def load_uid():
-    global UID
-    UID = get_uid_from_file()
+UID = get_uid_from_file()
 
 app.add_middleware(
     CORSMiddleware,
@@ -249,15 +255,6 @@ def health_check():
 # 🔁 Auto Infer Loop
 # ====================== #
 
-def get_uid_from_file():
-    try:
-        with open("device_info.json", "r") as f:
-            data = json.load(f)
-            return data.get("user_id")
-    except Exception as e:
-        print(f"[UID] Gagal ambil UID: {e}")
-        return None
-
 def get_current_gps_str():
     with sensor_lock:
         gps = sensor_data["gps"]
@@ -317,6 +314,8 @@ def draw_wrapped_text_with_background(img, text, origin, font, scale, text_color
 def infer_loop():
     global latest_payload, recent_labels, annotated_frame
     icons_dir = "icons"
+    UID = get_uid_from_file()
+    print(f"[UID] Loaded: {UID}")
     while True:
         frame = camera.get_frame()
         if frame is None:
