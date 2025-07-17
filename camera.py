@@ -5,8 +5,7 @@ import time
 
 def find_available_camera(max_index=5):
     system_platform = platform.system()
-    print(f"[INFO] Backends yang tersedia: {cv2.getBuildInformation()}")
-    backends = []
+    print(f"[INFO] Mendeteksi kamera di platform: {system_platform}")
 
     # Tentukan backend berdasarkan sistem operasi
     if system_platform == "Windows":
@@ -16,8 +15,7 @@ def find_available_camera(max_index=5):
     else:  # Linux
         backends = [cv2.CAP_V4L2, cv2.CAP_ANY]
 
-    print(f"[INFO] Mendeteksi kamera di platform: {system_platform}")
-
+    # Coba dengan backend eksplisit
     for backend in backends:
         for i in range(max_index):
             cap = cv2.VideoCapture(i, backend)
@@ -25,6 +23,15 @@ def find_available_camera(max_index=5):
                 print(f"[INFO] Kamera ditemukan di index {i} dengan backend {backend}")
                 return cap
             cap.release()
+
+    # Fallback terakhir: coba tanpa backend eksplisit
+    print("[INFO] Mencoba fallback tanpa backend eksplisit...")
+    for i in range(max_index):
+        cap = cv2.VideoCapture(i)
+        if cap is not None and cap.isOpened():
+            print(f"[INFO] Kamera ditemukan di index {i} tanpa backend")
+            return cap
+        cap.release()
 
     print("❌ Tidak ada kamera yang tersedia.")
     return None
