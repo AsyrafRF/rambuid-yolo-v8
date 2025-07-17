@@ -1,3 +1,4 @@
+import logging
 import socket
 import cv2
 import base64
@@ -210,10 +211,12 @@ def store_uid_once(uid):
     """Simpan UID hanya jika belum ada."""
     if os.path.exists(DEVICE_INFO_FILE):
         print("[INFO] UID sudah disimpan, lewati.")
+        print(f"[INFO] UID '{uid}' disimpan ke {DEVICE_INFO_FILE}.")
         return
     with open(DEVICE_INFO_FILE, "w") as f:
         json.dump({"user_id": uid}, f)
     print(f"[INFO] UID '{uid}' disimpan ke {DEVICE_INFO_FILE}.")
+    logging.info(f"UID '{uid}' disimpan ke {DEVICE_INFO_FILE}.")
 
 @app.post("/deteksi")
 async def post_uid(request: Request):
@@ -407,14 +410,15 @@ def infer_loop():
                 recent_labels[label] = current_time
                 frame_to_send = cv2.resize(frame.copy(), (320, 240))
                 speak_label_threaded(label)
+                UID = get_uid_from_file()
                 if UID:
                     threaded_send_detection_to_firestore(
                         label.strip().lower(), kategori,
                         x1, y1, x2, y2,
                         frame_to_send,
                         timestamp, formatted_time,
-                        UID
                     )
+                    logging.info(f"[SEND] Kirim label={label} UID={UID} kategori={kategori}")
                 else:
                     print("⚠️ UID tidak tersedia.")
 
