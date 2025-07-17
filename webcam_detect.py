@@ -11,7 +11,7 @@ from ultralytics import YOLO
 
 from camera import Camera
 from tts_utils import speak_label_threaded
-from firestore_utils import threaded_send_detection_to_firestore, fetch_uid_from_server
+from firestore_utils import threaded_send_detection_to_firestore
 
 # ============================ #
 # 🔧 Inisialisasi Komponen     
@@ -219,7 +219,7 @@ while True:
 
                 # Pengiriman dan proses TTS                          
                 speak_label_threaded(label)                
-                threaded_send_detection_to_firestore(label, kategori, x1, y1, x2, y2, frame_to_send, timestamp, formatted_time, uid=fetch_uid_from_server)
+                threaded_send_detection_to_firestore(label, kategori, x1, y1, x2, y2, frame_to_send, timestamp, formatted_time)
                 print(f"Dikirim ke Firebase: {label} @ {datetime.now().isoformat()}")
 
     # Tampilkan hasil

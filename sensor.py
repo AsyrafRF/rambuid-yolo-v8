@@ -3,6 +3,8 @@ import pynmea2
 import threading
 import time
 import platform
+from log_utils import sensor_logger
+
 
 # ============ MPU6050 Setup (Mock di Windows) ============
 
@@ -61,6 +63,7 @@ def gps_thread():
                     print("[GPS] Status tidak aktif.")
         except Exception as e:
             print(f"[GPS] Error: {e}")
+            sensor_logger.warning(f"[GPS] Error: {e}")
         time.sleep(0.1)
 
 def mpu_thread():
@@ -73,4 +76,5 @@ def mpu_thread():
                 sensor_data["mpu"]["gyro"] = gyro
         except Exception as e:
             print(f"[MPU6050] Error: {e}")
+            sensor_logger.warning(f"[MPU6050] Error: {e}")
         time.sleep(0.05)

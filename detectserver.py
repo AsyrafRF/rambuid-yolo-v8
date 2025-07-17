@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 from fastapi import FastAPI, WebSocket, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
+import numpy as np
 from ultralytics import YOLO
 from threading import Thread, Lock
 from pathlib import Path
@@ -35,6 +36,7 @@ from wifi import (
     write_wifi_config
 )
 
+DEVICE_INFO_FILE = "device_info.json"
 app = FastAPI()
 camera = Camera()
 model = YOLO('models/rambuid.pt')
@@ -198,21 +200,29 @@ def read_root():
 def video_feed():
     return StreamingResponse(mjpeg_generator(), media_type='multipart/x-mixed-replace; boundary=frame')
 
+def store_uid_once(uid):
+    """Simpan UID hanya jika belum ada."""
+    if os.path.exists(DEVICE_INFO_FILE):
+        print("[INFO] UID sudah disimpan, lewati.")
+        return
+    with open(DEVICE_INFO_FILE, "w") as f:
+        json.dump({"user_id": uid}, f)
+    print(f"[INFO] UID '{uid}' disimpan ke {DEVICE_INFO_FILE}.")
+
 @app.post("/deteksi")
 async def post_uid(request: Request):
     try:
         data = await request.json()
         id_token = data.get("id_token")
+        if not id_token:
+            return {"status": "error", "detail": "id_token tidak ditemukan"}
 
         uid = verify_firebase_token(id_token)
-
-        with open("device_info.json", "w") as f:
-            json.dump({"user_id": uid}, f)
-
         if not uid:
             return {"status": "unauthorized", "detail": "Token tidak valid"}
-        
-        return {"status": "success"}
+
+        store_uid_once(uid)
+        return {"status": "success", "uid": uid}
 
     except Exception as e:
         return {"status": "error", "detail": str(e)}
@@ -230,6 +240,10 @@ async def get_offline_detections():
         return JSONResponse(content=data, status_code=200)
     except Exception as e:
         return JSONResponse(content={"error": str(e)}, status_code=500)
+    
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
 
 # ====================== #
 # 🔁 Auto Infer Loop
@@ -248,10 +262,16 @@ def get_current_gps_str():
     with sensor_lock:
         gps = sensor_data["gps"]
         return f"{gps.get('lat')},{gps.get('lon')}" if gps else "N/A"
+    
+def get_current_mpu_str():
+    with sensor_lock:
+        mpu = sensor_data["mpu"]
+        return f"{mpu.get('accel')},{mpu.get('gyro')}" if mpu else "N/A"
+
 
 def mjpeg_generator():
     while True:
-        if annotated_frame is None:
+        if annotated_frame is None or not isinstance(annotated_frame, np.ndarray):
             print("⚠️ Menunggu annotated_frame...")
             time.sleep(0.05)
             continue
@@ -330,8 +350,9 @@ def infer_loop():
                 # 📝 Tambahkan log ke file
                 waktu = formatted_time
                 gps_info_str = get_current_gps_str()
+                mpu_info_str = get_current_mpu_str()
 
-                tulis_log_csv(label, kategori, conf, gps_info_str, waktu)
+                tulis_log_csv(label, kategori, conf, gps_info_str, mpu_info_str, waktu)
 
                 with ssid_lock:
                     ssid = current_ssid if current_ssid else "unknown"
