@@ -42,7 +42,8 @@ def load_labels(path="labels.txt"):
     with open(path, "r", encoding="utf-8") as f:
         return [line.strip() for line in f if line.strip()]
 
-labels = load_labels()
+labels = load_labels("labels.txt") 
+INPUT_SIZE = (416, 416)  # (width, height)
 
 def get_uid_from_file():
     try:
@@ -269,23 +270,50 @@ input_name = ort_session.get_inputs()[0].name
 # Helper Functions
 # ====================== #
 def preprocess_for_onnx(frame):
-    resized = cv2.resize(frame, (320, 320))
+    resized = cv2.resize(frame, INPUT_SIZE)
     img = resized[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB, HWC to CHW
     img = img.astype(np.float32) / 255.0
     img = np.expand_dims(img, axis=0)
+    print(ort_session.get_inputs()[0].shape)
     return img
 
-def postprocess_output(output, conf_threshold=0.5):
-    predictions = output[0]  # shape: [1, num_boxes, 6]
-    results = []
+def non_max_suppression_fast(boxes, scores, threshold=0.4):
+    boxes = np.array(boxes)
+    scores = np.array(scores)
+    indices = cv2.dnn.NMSBoxes(
+        bboxes=boxes.tolist(), scores=scores.tolist(), score_threshold=0.3, nms_threshold=threshold
+    )
+    return indices.flatten() if len(indices) > 0 else []
+
+def postprocess_output(output, conf_threshold=0.5, nms_threshold=0.4):
+    predictions = np.squeeze(output[0], axis=0)  # [num_boxes, 6]
+    boxes, confidences, class_ids = [], [], []
+
     for pred in predictions:
-        if pred[4] < conf_threshold:
+        conf = float(pred[4])
+        if conf < conf_threshold:
             continue
-        x1, y1, x2, y2, conf, cls = pred[:6]
+
+        x1, y1, x2, y2 = map(int, pred[:4])
+        cls_id = int(pred[5])
+
+        boxes.append([x1, y1, x2 - x1, y2 - y1])  # convert to x, y, w, h
+        confidences.append(conf)
+        class_ids.append(cls_id)
+
+    # Apply NMS
+    indices = cv2.dnn.NMSBoxes(boxes, confidences, conf_threshold, nms_threshold)
+    if len(indices) == 0:
+        return []
+
+    indices = indices.flatten()
+    results = []
+    for i in indices:
+        x, y, w, h = boxes[i]
         results.append({
-            "box": [int(x1), int(y1), int(x2), int(y2)],
-            "confidence": float(conf),
-            "class_id": int(cls)
+            "box": [x, y, x + w, y + h],
+            "confidence": confidences[i],
+            "class_id": class_ids[i]
         })
     return results
 
@@ -360,7 +388,7 @@ def infer_loop(camera, get_uid_from_file, current_ssid):
 
         input_tensor = preprocess_for_onnx(frame)
         output = ort_session.run(None, {input_name: input_tensor})
-        detections_raw = postprocess_output(output, conf_threshold=0.5)
+        detections_raw = postprocess_output(output, conf_threshold=0.7)
 
         waktu_jakarta = datetime.now(ZoneInfo("Asia/Jakarta"))
         timestamp = waktu_jakarta.isoformat()
@@ -373,7 +401,9 @@ def infer_loop(camera, get_uid_from_file, current_ssid):
             conf = det["confidence"]
             cls_id = det["class_id"]
 
-            label = labels[cls_id] if cls_id < len(labels) else f"class_{cls_id}"
+            label = labels[cls_id] if 0 <= cls_id < len(labels) else f"class_{cls_id}"
+            if cls_id >= len(labels):
+                continue  # skip unknown class
             if hasattr(ort_session, 'model_metadata') and ort_session.model_metadata.custom_metadata_map:
                 label = ort_session.model_metadata.custom_metadata_map.get(str(cls_id), label)
 
@@ -435,7 +465,7 @@ def infer_loop(camera, get_uid_from_file, current_ssid):
 # 🚀 Start Infer Thread
 # ====================== #
 print("🚀 Infer loop started")
-Thread(target=infer_loop, daemon=True).start()
+Thread(target=infer_loop, args=(camera, get_uid_from_file, current_ssid), daemon=True).start()
 Thread(target=gps_thread, daemon=True).start()
 Thread(target=mpu_thread, daemon=True).start()
 Thread(target=bersihkan_log_lama, daemon=True).start()

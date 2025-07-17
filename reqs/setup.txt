@@ -18,6 +18,12 @@ Requirements:
         - name it as "firebase-key.json"
         - place it on root of project
 
+if use pyenv:
+    > pyenv install 3.10.11
+    > pyenv local 3.10.11
+    > python -m venv venv310
+    > .\venv310\Scripts\activate
+
 General Setup:
 
     > uvicorn detectserver:app --host 0.0.0.0 --port 8080
